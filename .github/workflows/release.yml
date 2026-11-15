@@ -45,18 +45,18 @@ jobs:
       PRERELEASE_INPUT: ${{ github.event.inputs.prerelease }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Resolve version from tag
         id: version
@@ -210,7 +210,7 @@ jobs:
 
       - name: Publish GitHub Release (CHANGELOG notes)
         if: steps.notes.outputs.has_notes == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: LingoTrail ${{ steps.version.outputs.version }}
@@ -225,7 +225,7 @@ jobs:
 
       - name: Publish GitHub Release (generated notes)
         if: steps.notes.outputs.has_notes != 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: LingoTrail ${{ steps.version.outputs.version }}

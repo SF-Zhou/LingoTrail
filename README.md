@@ -266,9 +266,16 @@ LingoTrail/
 # Android Lint (fails on errors; reports in app/build/reports/lint-results-debug.html)
 ./gradlew lintDebug
 
-# Compose UI / instrumented tests (app/src/androidTest) — needs a device or emulator
-./gradlew connectedDebugAndroidTest
+# Instrumented end-to-end test (app/src/androidTest) — needs a device/emulator
+# and a private demo key, because it calls the real DeepSeek API once per bundled photo.
+# The test is skipped when no key is baked in at build time.
+./gradlew connectedDebugAndroidTest -PdefaultApiKey=sk-...
 ```
+
+The end-to-end test imports the three bundled photos from `app/src/androidTest/assets`, runs the
+real OCR + translation pipeline, and asserts that every photo yields aligned translation blocks and
+drawable overlay geometry. It is skipped automatically when `-PdefaultApiKey` is not set, so the
+default CI run never needs a secret.
 
 The CI workflow runs `testDebugUnitTest`, `lintDebug` and `assembleDebug` on every push to `main`
 and every pull request, and uploads the debug APK as an artifact.
