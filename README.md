@@ -36,6 +36,7 @@ stored only on your device. There are no accounts, no analytics, and no server r
 - [Install](#install)
 - [Set up your DeepSeek API key](#set-up-your-deepseek-api-key)
 - [How it works](#how-it-works)
+- [Known limitations](#known-limitations)
 - [Privacy](#privacy)
 - [Build from source](#build-from-source)
 - [Project structure](#project-structure)
@@ -129,15 +130,36 @@ You can change the key, change the target language, or point the app at a proxy/
 2. **Recognise** — the image is uploaded to `POST https://api.deepseek.com/v1/tools/ocr` with
    `purpose=rich_layout_recognition`. The response contains the recognised text and its layout
    boxes.
-3. **Group & translate** — the boxes are parsed and grouped into readable lines, then translated
-   into your target language in batches with the `deepseek-flash` chat model. Translations stay
-   aligned one-to-one with the recognised lines.
+3. **Group & translate** — the text blocks are parsed, put in reading order and translated into
+   your target language in batches with the `deepseek-flash` chat model. The model may report that
+   consecutive lines are wrapped fragments of one sentence; those paragraph groups are drawn as a
+   single block, and a geometric sanity check falls back to per-line translations when a proposed
+   group does not describe visually adjacent lines. Translations always stay aligned with the
+   recognised text.
 4. **Lay it back in** — for each block the app samples the background colour around the original
    text and fits the translation into the same area, then draws the result over the photo on-device.
 5. **Keep & share** — the scan and its translation are kept in history; the viewer can toggle the
    overlay and share a composited image.
 
 Everything after the API responses is done locally on the device.
+
+## Known limitations
+
+- **Network and credit are required.** Translation calls DeepSeek, so the app works offline only for
+  browsing history that was already translated. You need your own API key and credit.
+- **Recognition quality belongs to the OCR model.** Very small, stylised, handwritten, vertical or
+  heavily overlaid text can be missed or recognised in the wrong language; the app translates what
+  the OCR service returns.
+- **The overlay never sacrifices legibility.** If a translation cannot be fitted into the original
+  text area at a usable size, that block keeps the original pixels instead of drawing an unreadable
+  smear.
+- **Nineteen target languages** are built in, and the interface is available in English and
+  Simplified Chinese.
+- **DeepSeek's API is third-party.** Endpoint behaviour, availability, rate limits and pricing are
+  controlled by DeepSeek, not by this project.
+
+Ideas that were deliberately left for later: per-line text-to-speech pronunciation, a side-by-side
+original/translation list, more UI languages, and Play Store packaging as an AAB.
 
 ## Privacy
 

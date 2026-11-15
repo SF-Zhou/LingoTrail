@@ -55,7 +55,7 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Run unit tests, lint and build debug APK
-        run: ./gradlew testDebugUnitTest lintDebug assembleDebug --console=plain
+        run: ./gradlew testDebugUnitTest lintDebug assembleDebug compileDebugAndroidTestKotlin --console=plain
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
