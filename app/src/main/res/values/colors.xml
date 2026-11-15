@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand palette. Consumed by the Compose theme and vector assets. -->
+    <color name="brand_teal">#0E6E5C</color>
+    <color name="brand_teal_dark">#07352D</color>
+    <color name="brand_sand">#FCF9F3</color>
+    <color name="brand_amber">#C25E2E</color>
+    <color name="splash_background">#07352D</color>
+    <color name="ic_launcher_background">#0E6E5C</color>
+</resources>

@@ -1,0 +1,239 @@
+# Build, sign, verify and publish a LingoTrail GitHub Release.
+#
+# Triggers on tags matching `v*` (for example v1.0.0), or manually via
+# "Run workflow" with a tag name. A debug APK is built by ci.yml; this workflow
+# produces the minified, signed release APK and its SHA-256 checksum.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   ANDROID_KEYSTORE_BASE64     base64-encoded signing keystore (.jks)
+#   ANDROID_KEYSTORE_PASSWORD   keystore password
+#   ANDROID_KEY_ALIAS           signing key alias
+#   ANDROID_KEY_PASSWORD        signing key password
+#
+# Generate them once with scripts/generate-keystore.sh, which prints the
+# matching `gh secret set` commands.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release, including the leading v (for example v1.0.0)"
+        required: true
+        type: string
+      prerelease:
+        description: "Publish as a pre-release"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # The only job that needs to write to the repository.
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+      PRERELEASE_INPUT: ${{ github.event.inputs.prerelease }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve version from tag
+        id: version
+        run: |
+          set -euo pipefail
+          tag="${TAG//[[:space:]]/}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Release tags must look like v1.2.3 (optionally with a -rc/-beta suffix); got '${TAG}'."
+            exit 1
+          fi
+          version="${tag#v}"
+          prerelease=false
+          if [[ "$version" == *-* || "$PRERELEASE_INPUT" == "true" ]]; then
+            prerelease=true
+          fi
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing $tag (versionName=$version, prerelease=$prerelease)"
+
+      - name: Restore signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "${KEYSTORE_BASE64:-}" ]] || missing+=("ANDROID_KEYSTORE_BASE64")
+          [[ -n "${KEYSTORE_PASSWORD:-}" ]] || missing+=("ANDROID_KEYSTORE_PASSWORD")
+          [[ -n "${KEY_ALIAS:-}" ]] || missing+=("ANDROID_KEY_ALIAS")
+          [[ -n "${KEY_PASSWORD:-}" ]] || missing+=("ANDROID_KEY_PASSWORD")
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing required signing secret(s): ${missing[*]}."
+            echo "Configure all four Android signing secrets before releasing; see the 'Releasing' section of README.md." >&2
+            exit 1
+          fi
+          keystore="$RUNNER_TEMP/release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$keystore"
+          chmod 600 "$keystore"
+          if ! keytool -list -keystore "$keystore" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null 2>&1; then
+            echo "::error::The restored keystore is invalid, the password is wrong, or it has no alias '$KEY_ALIAS'."
+            exit 1
+          fi
+          # Make the keystore path available to the Gradle build (and later steps).
+          echo "ANDROID_KEYSTORE_PATH=$keystore" >> "$GITHUB_ENV"
+          echo "Signing keystore restored to $keystore and validated."
+
+      - name: Build signed release APK
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew assembleRelease -PversionName="$VERSION" --console=plain
+          apk="app/build/outputs/apk/release/app-release.apk"
+          if [[ ! -f "$apk" ]]; then
+            echo "::error::Expected signed release APK at $apk, but it does not exist."
+            echo "The build produced an unsigned or missing APK — check the release signing configuration." >&2
+            ls -la app/build/outputs/apk/release/ 2>/dev/null || true
+            exit 1
+          fi
+          mkdir -p dist
+          cp "$apk" "dist/LingoTrail-$VERSION.apk"
+          echo "Built dist/LingoTrail-$VERSION.apk"
+
+      - name: Verify APK signature and alignment
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [[ -z "$sdk_root" || ! -d "$sdk_root/build-tools" ]]; then
+            echo "::error::Android SDK build-tools not found. Set ANDROID_HOME or ANDROID_SDK_ROOT."
+            exit 1
+          fi
+          build_tools="$(find "$sdk_root/build-tools" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [[ -z "$build_tools" ]]; then
+            echo "::error::No build-tools installation found under $sdk_root/build-tools."
+            exit 1
+          fi
+          apksigner="$build_tools/apksigner"
+          zipalign="$build_tools/zipalign"
+          for tool in "$apksigner" "$zipalign"; do
+            if [[ ! -x "$tool" ]]; then
+              echo "::error::Required tool not found: $tool"
+              exit 1
+            fi
+          done
+          apk="dist/LingoTrail-$VERSION.apk"
+          echo "Checking zip alignment with $zipalign"
+          "$zipalign" -c -v 4 "$apk"
+          echo "Checking signature with $apksigner"
+          "$apksigner" verify --verbose --print-certs "$apk"
+          echo "APK is signed and zip-aligned."
+
+      - name: Generate SHA-256 checksum
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          (
+            cd dist
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "LingoTrail-$VERSION.apk" > "LingoTrail-$VERSION.apk.sha256"
+            else
+              shasum -a 256 "LingoTrail-$VERSION.apk" > "LingoTrail-$VERSION.apk.sha256"
+            fi
+          )
+          cat "dist/LingoTrail-$VERSION.apk.sha256"
+
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/release-notes.md"
+          : > "$notes"
+          if [[ -f CHANGELOG.md ]]; then
+            awk -v ver="$VERSION" '
+              /^## \[/ {
+                if (capture) exit
+                heading = $0
+                sub(/^## \[/, "", heading)
+                sub(/\].*/, "", heading)
+                if (heading == ver) { capture = 1 }
+                next
+              }
+              capture && /^## / { exit }
+              capture && /^\[[^]]+\]:/ { exit }
+              capture { print }
+            ' CHANGELOG.md > "$notes"
+          fi
+          # Drop leading blank lines left over from the heading match.
+          awk 'NF { started = 1 } started' "$notes" > "$notes.tmp" && mv "$notes.tmp" "$notes"
+          if [[ -s "$notes" ]]; then
+            echo "has_notes=true" >> "$GITHUB_OUTPUT"
+            echo "Using the CHANGELOG.md section for $VERSION."
+            cat "$notes"
+          else
+            echo "has_notes=false" >> "$GITHUB_OUTPUT"
+            echo "No CHANGELOG.md section for $VERSION; GitHub generated notes will be used."
+          fi
+
+      - name: Publish GitHub Release (CHANGELOG notes)
+        if: steps.notes.outputs.has_notes == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: LingoTrail ${{ steps.version.outputs.version }}
+          body_path: ${{ runner.temp }}/release-notes.md
+          prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
+          fail_on_unmatched_files: true
+          files: |
+            dist/LingoTrail-${{ steps.version.outputs.version }}.apk
+            dist/LingoTrail-${{ steps.version.outputs.version }}.apk.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish GitHub Release (generated notes)
+        if: steps.notes.outputs.has_notes != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: LingoTrail ${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
+          fail_on_unmatched_files: true
+          files: |
+            dist/LingoTrail-${{ steps.version.outputs.version }}.apk
+            dist/LingoTrail-${{ steps.version.outputs.version }}.apk.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

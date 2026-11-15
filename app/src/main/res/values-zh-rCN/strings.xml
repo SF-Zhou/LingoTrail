@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LingoTrail</string>
+    <string name="app_tagline">拍下眼前，读懂世界</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_headline">看懂旅途中的\n每一块招牌。</string>
+    <string name="onboarding_subheadline">拍下菜单、路牌或告示，LingoTrail 会识别上面的文字，翻译好之后再原位覆盖到照片上。</string>
+    <string name="onboarding_feature_capture_title">拍照或导入</string>
+    <string name="onboarding_feature_capture_text">相机、相册都行，带文字的图片都可以。</string>
+    <string name="onboarding_feature_overlay_title">译文原位覆盖</string>
+    <string name="onboarding_feature_overlay_text">译文按原文字号与位置覆盖，照片还是那张照片。</string>
+    <string name="onboarding_feature_history_title">旅途随时回看</string>
+    <string name="onboarding_feature_history_text">所有照片留在历史里，可放大细看，一键切换译文。</string>
+    <string name="onboarding_setup_title">填写你的 API Key</string>
+    <string name="api_key_label">DeepSeek API Key</string>
+    <string name="api_key_placeholder">sk-…</string>
+    <string name="api_key_helper">仅用于本机调用 DeepSeek API，只保存在这台设备上。</string>
+    <string name="api_key_required">请先填写 API Key。</string>
+    <string name="api_key_invalid">Key 验证失败，请检查后重试。</string>
+    <string name="verifying">正在验证…</string>
+    <string name="get_api_key">获取 API Key</string>
+    <string name="target_language_label">翻译为</string>
+    <string name="target_language_helper">已根据系统语言自动选择，随时可以修改。</string>
+    <string name="start_button">开始使用</string>
+    <string name="onboarding_privacy_note">照片会发送给 DeepSeek 用于识别与翻译，其他信息不会离开本机。</string>
+
+    <!-- Home -->
+    <string name="empty_title">还没有翻译记录</string>
+    <string name="empty_body">拍一张带有文字的照片，或从相册导入一张，译文会直接覆盖在原图上。</string>
+    <string name="take_photo">拍照</string>
+    <string name="import_photo">导入</string>
+    <string name="photo_count">%1$d 张记录</string>
+    <string name="scan_failed">翻译失败</string>
+    <string name="scan_processing">翻译中…</string>
+    <string name="home_hint">点击缩略图查看</string>
+
+    <!-- Processing -->
+    <string name="processing_title">正在翻译</string>
+    <string name="processing_step_ocr">识别文字</string>
+    <string name="processing_step_translate">翻译</string>
+    <string name="processing_step_render">生成覆盖</string>
+    <string name="processing_hint">通常只需要几秒钟。</string>
+
+    <!-- Viewer -->
+    <string name="viewer_language_pair">%1$s → %2$s</string>
+    <string name="viewer_source_auto">自动</string>
+    <string name="show_translation">显示译文</string>
+    <string name="hide_translation">隐藏译文</string>
+    <string name="share">分享</string>
+    <string name="share_sheet_title">分享译文照片</string>
+    <string name="share_failed">分享失败。</string>
+    <string name="retranslate">重新翻译</string>
+    <string name="no_text_title">没有识别到文字</string>
+    <string name="no_text_body">换一张更清晰、更端正、光线更好的照片试试。</string>
+    <string name="scan_failed_title">翻译失败</string>
+    <string name="scan_failed_body">照片已保存，处理问题后可以重新翻译。</string>
+    <string name="open_settings">打开设置</string>
+
+    <!-- Errors -->
+    <string name="error_network">网络连接失败，请检查网络后重试。</string>
+    <string name="error_auth">API Key 无效或已失效，请到设置中更新。</string>
+    <string name="error_balance">DeepSeek 账户余额不足，请到平台充值。</string>
+    <string name="error_rate_limit">请求太频繁，请稍后再试。</string>
+    <string name="error_server">DeepSeek 服务暂时不可用，请稍后再试。</string>
+    <string name="error_timeout">请求超时，请重试。</string>
+    <string name="error_bad_image">这张图片无法处理，请换一张。</string>
+    <string name="error_unknown">出了点问题，请重试。</string>
+
+    <!-- Settings -->
+    <string name="settings_title">设置</string>
+    <string name="settings_section_language">翻译</string>
+    <string name="settings_section_service">DeepSeek 服务</string>
+    <string name="settings_section_storage">存储</string>
+    <string name="settings_section_about">关于</string>
+    <string name="api_key">API Key</string>
+    <string name="api_key_not_set">未设置</string>
+    <string name="change">修改</string>
+    <string name="base_url">服务地址</string>
+    <string name="base_url_helper">除非使用代理，否则保持默认即可。</string>
+    <string name="model">模型</string>
+    <string name="clear_history">清除历史记录</string>
+    <string name="clear_history_title">清除全部历史记录？</string>
+    <string name="clear_history_message">所有照片和译文都会从本机删除，且无法恢复。</string>
+    <string name="clear_history_confirm">全部清除</string>
+    <string name="history_cleared">已清除</string>
+    <string name="version">版本</string>
+    <string name="source_code">开源地址</string>
+    <string name="license">开源许可证</string>
+    <string name="privacy">隐私说明</string>
+    <string name="save">保存</string>
+    <string name="saved">已保存</string>
+
+    <!-- Privacy -->
+    <string name="privacy_title">隐私说明</string>
+    <string name="privacy_body">LingoTrail 没有账号系统，也没有任何统计埋点。\n\n照片默认只保存在本机；只有在翻译时会发送给你配置的 DeepSeek API。API Key 仅保存在本应用私有存储中。\n\n清除历史记录会删除本机上的全部照片和译文。</string>
+
+    <!-- Common -->
+    <string name="back">返回</string>
+    <string name="close">关闭</string>
+    <string name="cancel">取消</string>
+    <string name="retry">重试</string>
+    <string name="delete">删除</string>
+    <string name="delete_scan_title">删除这条记录？</string>
+    <string name="delete_scan_message">照片和译文都会从本机删除。</string>
+    <string name="settings">设置</string>
+
+    <!-- Content descriptions -->
+    <string name="cd_settings">设置</string>
+    <string name="cd_camera">拍照</string>
+    <string name="cd_import">导入照片</string>
+    <string name="cd_back">返回</string>
+    <string name="cd_share">分享</string>
+    <string name="cd_delete">删除</string>
+    <string name="cd_toggle_translation">显示或隐藏译文</string>
+    <string name="cd_thumbnail">记录缩略图</string>
+    <string name="cd_more">更多操作</string>
+    <string name="cd_target_language">目标语言</string>
+</resources>

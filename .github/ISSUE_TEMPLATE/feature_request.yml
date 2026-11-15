@@ -1,0 +1,66 @@
+name: Feature request
+description: Suggest an idea or improvement for LingoTrail
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion! Please describe the problem first, then the solution you have in
+        mind. Keep in mind the project's scope: a focused, on-device, bring-your-own-key
+        translation app.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and discussions and this is not a duplicate.
+          required: true
+        - label: This is a request for a feature, not a bug report.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the situation or frustration that motivates the request.
+      placeholder: I often scan ... and it is hard to ...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the behaviour you would like to see.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area of the app
+      options:
+        - Capture or import
+        - OCR / text recognition
+        - Translation
+        - Translation overlay rendering
+        - History or viewer
+        - Settings or API key
+        - Sharing
+        - Accessibility or localisation
+        - Build, CI, or release
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered (optional)
+      description: Existing workarounds, other apps, or alternative designs you have considered.
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context (optional)
+      description: Mock-ups, screenshots, references, or anything else that helps explain the idea.
+    validations:
+      required: false
