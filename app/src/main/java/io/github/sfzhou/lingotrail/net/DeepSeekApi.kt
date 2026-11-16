@@ -75,6 +75,7 @@ class DeepSeekApi(
     suspend fun translateTexts(
         texts: List<String>,
         target: TargetLanguage,
+        sourceLanguage: TargetLanguage? = null,
     ): TranslationOutcome = withContext(Dispatchers.IO) {
         if (texts.isEmpty()) return@withContext TranslationOutcome(emptyList(), emptyList(), null)
 
@@ -82,7 +83,9 @@ class DeepSeekApi(
         val semaphore = Semaphore(maxConcurrentTranslations)
         val partials = coroutineScope {
             chunks.map { indices ->
-                async { semaphore.withPermit { translateChunk(indices, texts, target) } }
+                async {
+                    semaphore.withPermit { translateChunk(indices, texts, target, sourceLanguage) }
+                }
             }.awaitAll()
         }
 
@@ -213,6 +216,7 @@ class DeepSeekApi(
         indices: List<Int>,
         texts: List<String>,
         target: TargetLanguage,
+        sourceLanguage: TargetLanguage?,
     ): ChunkTranslation {
         val lines = JSONArray().apply {
             indices.forEach { index ->
@@ -220,6 +224,7 @@ class DeepSeekApi(
             }
         }
         val userContent = JSONObject()
+            .put("source_language", sourceLanguage?.promptName ?: "auto")
             .put("target_language", target.promptName)
             .put("lines", lines)
             .toString()
@@ -234,7 +239,10 @@ class DeepSeekApi(
             put(
                 "messages",
                 JSONArray().apply {
-                    put(JSONObject().put("role", "system").put("content", systemPrompt(target)))
+                    put(
+                        JSONObject().put("role", "system")
+                            .put("content", systemPrompt(target, sourceLanguage)),
+                    )
                     put(JSONObject().put("role", "user").put("content", userContent))
                 },
             )
@@ -292,22 +300,41 @@ class DeepSeekApi(
         throw lastError ?: ApiException(ApiErrorKind.UNKNOWN)
     }
 
-    private fun systemPrompt(target: TargetLanguage): String = """
-        You are the translation engine inside a travel camera app. You receive lines of text
-        recognised from one photo, in reading order, each with an id: signs, menus, notices,
-        tickets and labels. Translate every line into ${target.promptName}.
+    internal fun systemPrompt(target: TargetLanguage, sourceLanguage: TargetLanguage?): String {
+        val sourceRule = if (sourceLanguage != null) {
+            "Source language: ${sourceLanguage.promptName}. Treat this as the main language of the " +
+                "photo. If an individual line is clearly written in another language, translate that line too."
+        } else {
+            "Source language: detect the dominant language from the text itself."
+        }
+        val sourceEcho = if (sourceLanguage != null) {
+            "\"source_language\" must be \"${sourceLanguage.promptName}\"."
+        } else {
+            "\"source_language\" must be the dominant source language you detected, in English."
+        }
+        return """
+            You are the translation engine inside a travel camera app. You receive lines of text
+            recognised from one photo, in reading order, each with an id: signs, menus, notices,
+            tickets and labels.
 
-        Return ONLY a JSON object with this shape:
-        {"source_language":"<dominant source language in English>","lines":[{"id":1,"text":"<translation>"}],"groups":[{"ids":[1,2],"text":"<combined translation>"}]}
+            $sourceRule
 
-        Rules:
-        - "lines": exactly one entry per input id, in input order. Every id must appear.
-        - "groups": optional, may be omitted or empty. Add a group ONLY when two or more consecutive lines are wrapped fragments of the same sentence or paragraph, so that translating them separately would read badly. The group text replaces the individual translations of those lines and will be drawn over their combined area. Every id may appear in at most one group. When in doubt, do not group.
-        - Translate naturally and concisely for the scene. Preserve numbers, prices, currencies, times, units and symbols.
-        - Some lines are HTML tables (<table><tr><td>…). Translate only the readable text inside the cells, and keep the tags, rows and columns exactly as they are.
-        - If a line is already in ${target.promptName}, or is only a number or symbol, repeat it unchanged.
-        - Do not add explanations, notes, transliterations or markdown.
-    """.trimIndent()
+            Target language: ${target.promptName}. Translate every line into ${target.promptName}.
+
+            Return ONLY a JSON object with this shape:
+            {"source_language":"<source language in English>","lines":[{"id":1,"text":"<translation>"}],"groups":[{"ids":[1,2],"text":"<combined translation>"}]}
+
+            Rules:
+            - "lines": exactly one entry per input id, in input order. Every id must appear exactly once. Never merge, split or drop lines.
+            - "groups": optional, may be omitted or empty. Add a group ONLY when two or more consecutive lines are wrapped fragments of the same sentence or paragraph, so that translating them separately would read badly. The group text replaces those individual translations and is drawn over their combined area. Every id may appear in at most one group. When in doubt, do not group.
+            - Keep each translation about as long as the original line when possible: it is drawn back over the original text.
+            - Translate naturally and concisely for the scene. Preserve numbers, prices, currencies, times, units, symbols and proper names that should not be translated.
+            - If a line is already in ${target.promptName}, or is only a number or symbol, repeat it unchanged.
+            - Some lines are HTML tables (<table><tr><td>...). Translate only the readable text inside the cells, and keep the tags, rows and columns exactly as they are.
+            - $sourceEcho
+            - Do not add explanations, notes, transliterations, markdown or extra keys.
+        """.trimIndent()
+    }
 
     private fun stripCodeFences(content: String): String {
         var text = content.trim()

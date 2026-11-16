@@ -21,6 +21,9 @@
     <string name="verifying">Verifying…</string>
     <string name="get_api_key">Get an API key</string>
     <string name="target_language_label">Translate into</string>
+    <string name="source_language">Source language</string>
+    <string name="source_language_auto">Auto-detect</string>
+    <string name="source_language_helper">Pin the language when auto-detection gets it wrong.</string>
     <string name="target_language_helper">Detected automatically from your system language. You can change it anytime.</string>
     <string name="start_button">Start exploring</string>
     <string name="onboarding_privacy_note">Photos are sent to DeepSeek for recognition and translation. Nothing else leaves your device.</string>

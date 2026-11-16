@@ -14,7 +14,7 @@ plugins {
  * versionCode is derived from semver: major * 10000 + minor * 100 + patch.
  */
 val versionNameOverride = (findProperty("versionName") as String?) ?: System.getenv("VERSION_NAME")
-val appVersionName = (versionNameOverride ?: "1.0.0").removePrefix("v").ifBlank { "1.0.0" }
+val appVersionName = (versionNameOverride ?: "1.1.0").removePrefix("v").ifBlank { "1.0.0" }
 
 /*
  * versionCode = major * 10000 + minor * 100 + patch.

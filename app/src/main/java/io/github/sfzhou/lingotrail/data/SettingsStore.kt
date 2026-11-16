@@ -25,6 +25,9 @@ class SettingsStore(private val context: Context) {
 
     fun setTargetLanguage(language: TargetLanguage) = update { it.copy(targetLanguage = language) }
 
+    /** Pass null to go back to automatic source-language detection. */
+    fun setSourceLanguage(language: TargetLanguage?) = update { it.copy(sourceLanguage = language) }
+
     fun setBaseUrl(url: String) = update {
         val normalized = url.trim().trimEnd('/').ifBlank { AppSettings.DEFAULT_BASE_URL }
         it.copy(baseUrl = normalized)
@@ -37,6 +40,7 @@ class SettingsStore(private val context: Context) {
         prefs.edit {
             putString(KEY_API_KEY, updated.apiKey)
             putString(KEY_TARGET_LANGUAGE, updated.targetLanguage.tag)
+            putString(KEY_SOURCE_LANGUAGE, updated.sourceLanguage?.tag.orEmpty())
             putString(KEY_BASE_URL, updated.baseUrl)
             putBoolean(KEY_ONBOARDING_COMPLETE, updated.onboardingComplete)
         }
@@ -49,6 +53,7 @@ class SettingsStore(private val context: Context) {
             apiKey = prefs.getString(KEY_API_KEY, defaults.apiKey).orEmpty(),
             targetLanguage = TargetLanguage.fromTag(prefs.getString(KEY_TARGET_LANGUAGE, null))
                 ?: defaults.targetLanguage,
+            sourceLanguage = TargetLanguage.fromTag(prefs.getString(KEY_SOURCE_LANGUAGE, null)),
             baseUrl = prefs.getString(KEY_BASE_URL, defaults.baseUrl)
                 ?.takeIf { it.isNotBlank() } ?: defaults.baseUrl,
             onboardingComplete = prefs.getBoolean(KEY_ONBOARDING_COMPLETE, defaults.onboardingComplete),
@@ -59,6 +64,7 @@ class SettingsStore(private val context: Context) {
         const val PREFS_NAME = "lingotrail_settings"
         const val KEY_API_KEY = "api_key"
         const val KEY_TARGET_LANGUAGE = "target_language"
+        const val KEY_SOURCE_LANGUAGE = "source_language"
         const val KEY_BASE_URL = "base_url"
         const val KEY_ONBOARDING_COMPLETE = "onboarding_complete"
     }

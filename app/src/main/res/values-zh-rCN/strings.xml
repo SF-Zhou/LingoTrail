@@ -21,6 +21,9 @@
     <string name="verifying">正在验证…</string>
     <string name="get_api_key">获取 API Key</string>
     <string name="target_language_label">翻译为</string>
+    <string name="source_language">源语言</string>
+    <string name="source_language_auto">智能识别</string>
+    <string name="source_language_helper">自动识别出错时可指定，提升翻译准确度。</string>
     <string name="target_language_helper">已根据系统语言自动选择，随时可以修改。</string>
     <string name="start_button">开始使用</string>
     <string name="onboarding_privacy_note">照片会发送给 DeepSeek 用于识别与翻译，其他信息不会离开本机。</string>

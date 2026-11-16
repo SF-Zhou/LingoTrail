@@ -14,19 +14,27 @@ import android.text.TextUtils
 import io.github.sfzhou.lingotrail.data.HistoryItem
 import io.github.sfzhou.lingotrail.data.TranslationBlock
 import kotlin.math.ceil
-import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 
-/** A laid-out piece of translated text positioned in virtual image space. */
+/** A laid-out piece of translated text, positioned relative to its block's pivot. */
 class PreparedText(
     val layout: StaticLayout,
     val left: Float,
     val top: Float,
 )
 
-/** A translation unit baked into drawable geometry, in image-independent "virtual" pixels. */
+/**
+ * A translation unit baked into drawable geometry.
+ *
+ * All coordinates are local to ([pivotX], [pivotY]) and are drawn after rotating by
+ * [rotationDegrees], so slanted text on a photo gets a slanted patch that covers
+ * exactly the original line instead of a huge axis-aligned rectangle.
+ */
 class PreparedBlock(
+    val pivotX: Float,
+    val pivotY: Float,
+    val rotationDegrees: Float,
     val backgroundRect: RectF,
     val cornerRadius: Float,
     val backgroundPaint: Paint,
@@ -54,12 +62,13 @@ class PreparedOverlay(
 }
 
 /**
- * Turns translated blocks into drawable geometry: samples the original colours,
- * picks the largest legible type size, and builds the text layouts.
+ * Turns translated blocks into drawable geometry.
  *
- * Plain lines and wrapped paragraphs are drawn as one fitted text block. Tables
- * keep their structure: rows are spread evenly over the original table area and
- * cells are laid out in columns, with numeric right-hand columns aligned right.
+ * The size of the translation is derived from the ink of the original text, not
+ * from the OCR box: the text direction is measured with PCA, the glyph height from
+ * the ink bands, and the patch is the tight rotated band plus a small safety
+ * margin. This keeps a translation visually the same size as the words it replaces,
+ * even when the photo was taken at an angle.
  *
  * Runs on a background thread; the result is cached by the viewer and reused for
  * sharing the composited image.
@@ -68,13 +77,13 @@ object OverlayPreparer {
 
     private const val MAX_SAMPLES = 2_400
     private const val MIN_TEXT_SIZE = 4f
-    private const val TEXT_INSET_RATIO = 0.04f
-    private const val BACKGROUND_PADDING_RATIO = 0.3f
+    private const val MAX_ABSOLUTE_FONT_SIZE = 140f
+    private const val TEXT_INSET_RATIO = 0.05f
+    private const val BACKGROUND_PADDING_RATIO = 0.30f
     private const val TABLE_PADDING_X_RATIO = 0.05f
-    private const val TABLE_PADDING_Y_RATIO = 0.06f
+    private const val TABLE_PADDING_Y_RATIO = 0.05f
     private const val TABLE_RIGHT_COLUMN_SHARE = 0.36f
     private const val NUMERIC_CELL_MAX_LENGTH = 16
-    private const val INK_DISTANCE = 42f
 
     private val TITLE_LABELS = setOf("title", "sub_title", "doctitle", "page_title")
 
@@ -98,63 +107,45 @@ object OverlayPreparer {
         if (translation.isEmpty() && block.table == null) return null
         if (block.boxes.isEmpty()) return null
 
-        val rects = block.boxes.map { box ->
-            RectF(
-                box.left * scale,
-                box.top * scale,
-                box.right * scale,
-                box.bottom * scale,
-            )
-        }.filter { it.width() > 1f && it.height() > 1f }
-        if (rects.isEmpty()) return null
-
-        val ocrUnion = RectF(rects.first())
-        rects.drop(1).forEach { rect -> ocrUnion.union(rect) }
+        val ocrUnion = RectF(
+            block.boxes.minOf { it.left } * scale,
+            block.boxes.minOf { it.top } * scale,
+            block.boxes.maxOf { it.right } * scale,
+            block.boxes.maxOf { it.bottom } * scale,
+        )
         if (ocrUnion.width() < 2f || ocrUnion.height() < 2f) return null
         if (ocrUnion.top >= virtualHeight) return null
 
         // Already in the target language: leave the original photo untouched.
-        if (block.table == null && translation.equals(block.original.trim(), ignoreCase = true)) return null
-
-        // OCR boxes are usually close but not pixel-exact; snapping a single line to
-        // the actual ink lets the translated text sit exactly where the original
-        // glyphs were, while the background patch covers both the OCR box and the
-        // measured ink so old text can never peek out. Multi-line unions
-        // (paragraphs, tables) are accurate enough and snapping them is riskier,
-        // so they keep the OCR geometry.
-        val snap = if (block.table == null) {
-            snapToInk(bitmap, ocrUnion, virtualHeight, block)
-        } else {
-            null
+        if (block.table == null && translation.equals(block.original.trim(), ignoreCase = true)) {
+            return null
         }
-        val textRect = snap?.textRect ?: ocrUnion
-        val coverageRect = snap?.coverageRect ?: ocrUnion
-        if (coverageRect.width() < 2f || coverageRect.height() < 2f) return null
-        if (coverageRect.top >= virtualHeight) return null
 
-        val colors = sampleColors(bitmap, item, textRect)
+        val placement = InkAnalyzer.analyze(bitmap, ocrUnion, block.lineCount)
+            ?: fallbackPlacement(ocrUnion, block.lineCount)
+        val colors = sampleColors(bitmap, item, placement.axisBounds)
         val bold = block.label.lowercase() in TITLE_LABELS
+
         val texts = if (block.table != null) {
-            prepareTableTexts(block, textRect, colors, bold)
+            prepareTableTexts(block, placement, colors, bold)
         } else {
-            prepareFlowTexts(block, textRect, colors, bold)
+            prepareFlowTexts(block, placement, colors, bold)
         }
         if (texts.isEmpty()) return null
 
-        val averageLineHeight = (textRect.height() / block.lineCount.coerceAtLeast(1))
-        val padding = max(2f, averageLineHeight * BACKGROUND_PADDING_RATIO)
-        val backgroundRect = RectF(
-            floor(coverageRect.left - padding),
-            floor(coverageRect.top - padding),
-            ceil(coverageRect.right + padding),
-            ceil(coverageRect.bottom + padding),
-        )
+        val padding = max(2f, placement.glyphHeight * BACKGROUND_PADDING_RATIO)
+        val backgroundRect = RectF(placement.coverage).apply {
+            inset(-padding, -padding)
+        }
         val cornerRadius = min(backgroundRect.height() * 0.16f, 10f)
         val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = colors.background
             style = Paint.Style.FILL
         }
         return PreparedBlock(
+            pivotX = placement.centerX,
+            pivotY = placement.centerY,
+            rotationDegrees = placement.rotationDegrees,
             backgroundRect = backgroundRect,
             cornerRadius = cornerRadius,
             backgroundPaint = backgroundPaint,
@@ -162,24 +153,27 @@ object OverlayPreparer {
         )
     }
 
-    /** Lays out a line or a wrapped paragraph, fitted to the original text area. */
+    /** Lays out a line or a wrapped paragraph inside the measured text band. */
     private fun prepareFlowTexts(
         block: TranslationBlock,
-        union: RectF,
+        placement: InkPlacement,
         colors: ColorAnalysis.SampledColors,
         bold: Boolean,
     ): List<PreparedText> {
         val text = block.translation.trim()
         if (text.isEmpty()) return emptyList()
 
-        val lineCount = block.lineCount.coerceAtLeast(1)
-        val averageLineHeight = union.height() / lineCount
-        val maxTextSize = min(union.height() * 0.96f, averageLineHeight * 1.4f)
-        val minTextSize = max(MIN_TEXT_SIZE, averageLineHeight * 0.22f)
-        val horizontalInset = max(1.5f, averageLineHeight * TEXT_INSET_RATIO)
-        val availableWidth = union.width() - horizontalInset * 2f
-        val availableHeight = union.height()
-        if (availableWidth <= 2f || availableHeight <= 2f || maxTextSize <= minTextSize) return emptyList()
+        val glyphHeight = placement.glyphHeight
+        val inset = max(1f, glyphHeight * TEXT_INSET_RATIO)
+        val availableWidth = placement.halfLength * 2f - inset * 2f
+        val availableHeight = placement.halfHeight * 2f
+        if (availableWidth <= 2f || availableHeight <= 2f) return emptyList()
+
+        val minTextSize = max(MIN_TEXT_SIZE, glyphHeight * 0.22f)
+        val maxTextSize = min(
+            InkMath.targetFontSize(glyphHeight),
+            MAX_ABSOLUTE_FONT_SIZE,
+        ).coerceAtLeast(minTextSize)
 
         val paint = textPaint(colors.foreground, bold)
         val measurer = staticLayoutMeasurer(paint, text, Layout.Alignment.ALIGN_NORMAL)
@@ -198,20 +192,21 @@ object OverlayPreparer {
         return listOf(
             PreparedText(
                 layout = layout,
-                left = union.left + horizontalInset,
-                top = union.top + (union.height() - layout.height) / 2f,
+                left = -placement.halfLength + inset,
+                top = -placement.halfHeight + (availableHeight - layout.height) / 2f,
             ),
         )
     }
 
     /**
-     * Re-draws a recognised table: rows are distributed evenly over the table box and
-     * each cell is auto-fitted into its column. Price/number columns are right-aligned
-     * so the result keeps the original table's reading rhythm.
+     * Re-draws a recognised table in the measured band: rows are spread evenly
+     * across the band and cells are fitted into columns, with price/number columns
+     * right-aligned. The whole table is rotated with the original when the photo is
+     * taken at an angle.
      */
     private fun prepareTableTexts(
         block: TranslationBlock,
-        union: RectF,
+        placement: InkPlacement,
         colors: ColorAnalysis.SampledColors,
         bold: Boolean,
     ): List<PreparedText> {
@@ -224,23 +219,27 @@ object OverlayPreparer {
         val columnCount = rows.maxOf { it.size }
         if (columnCount == 0) return emptyList()
 
-        val rowHeight = union.height() / rowCount
+        val totalWidth = placement.halfLength * 2f
+        val rowHeight = placement.halfHeight * 2f / rowCount
         val columnWidths = if (columnCount == 2) {
-            listOf(union.width() * (1f - TABLE_RIGHT_COLUMN_SHARE), union.width() * TABLE_RIGHT_COLUMN_SHARE)
+            listOf(totalWidth * (1f - TABLE_RIGHT_COLUMN_SHARE), totalWidth * TABLE_RIGHT_COLUMN_SHARE)
         } else {
-            List(columnCount) { union.width() / columnCount }
+            List(columnCount) { totalWidth / columnCount }
         }
         val insetX = max(1f, rowHeight * TABLE_PADDING_X_RATIO)
         val insetY = max(0.5f, rowHeight * TABLE_PADDING_Y_RATIO)
         val availableHeight = (rowHeight - insetY * 2f).coerceAtLeast(2f)
-        val minTextSize = max(MIN_TEXT_SIZE, rowHeight * 0.2f)
-        val maxTextSize = (rowHeight * 0.95f).coerceAtLeast(minTextSize)
+        val minTextSize = max(MIN_TEXT_SIZE, rowHeight * 0.18f)
+        val maxTextSize = min(
+            rowHeight * 0.85f,
+            InkMath.targetFontSize(placement.glyphHeight),
+        ).coerceAtLeast(minTextSize)
 
         val texts = mutableListOf<PreparedText>()
         rows.forEachIndexed { rowIndex, cells ->
             cells.forEachIndexed { columnIndex, cell ->
                 if (cell.isEmpty()) return@forEachIndexed
-                val columnLeft = union.left + columnWidths.take(columnIndex).sum()
+                val columnLeft = -placement.halfLength + columnWidths.take(columnIndex).sum()
                 val availableWidth = (columnWidths[columnIndex] - insetX * 2f).coerceAtLeast(2f)
                 val rightAlign = columnIndex == cells.lastIndex &&
                     columnCount >= 2 &&
@@ -263,7 +262,7 @@ object OverlayPreparer {
                 texts += PreparedText(
                     layout = layout,
                     left = columnLeft + insetX,
-                    top = union.top + rowHeight * rowIndex + insetY +
+                    top = -placement.halfHeight + rowHeight * rowIndex + insetY +
                         (availableHeight - layout.height) / 2f,
                 )
             }
@@ -271,10 +270,33 @@ object OverlayPreparer {
         return texts
     }
 
+    private fun fallbackPlacement(ocrUnion: RectF, lineCount: Int): InkPlacement {
+        val safeLineCount = lineCount.coerceAtLeast(1)
+        val glyphHeight = when {
+            safeLineCount <= 1 -> ocrUnion.height() * 0.8f
+            else -> InkMath.glyphHeightFromLineCount(ocrUnion.height(), safeLineCount)
+        }
+        return InkPlacement(
+            centerX = ocrUnion.centerX(),
+            centerY = ocrUnion.centerY(),
+            rotationDegrees = 0f,
+            halfLength = ocrUnion.width() / 2f,
+            halfHeight = ocrUnion.height() / 2f,
+            glyphHeight = glyphHeight.coerceAtLeast(3f),
+            axisBounds = RectF(ocrUnion),
+            coverage = RectF(
+                -ocrUnion.width() / 2f,
+                -ocrUnion.height() / 2f,
+                ocrUnion.width() / 2f,
+                ocrUnion.height() / 2f,
+            ),
+        )
+    }
+
     private fun looksNumeric(cell: String): Boolean {
         if (cell.length > NUMERIC_CELL_MAX_LENGTH) return false
         if (cell.none { it.isDigit() }) return false
-        return cell.none { it.isLetter() && it.code > 0x2E80 } // no CJK letters in numeric columns
+        return cell.none { it.isLetter() && it.code > 0x2E80 }
     }
 
     private fun textPaint(color: Int, bold: Boolean): TextPaint =
@@ -313,226 +335,6 @@ object OverlayPreparer {
         .setMaxLines(16)
         .build()
 
-    private data class InkSnap(val textRect: RectF, val coverageRect: RectF)
-
-    /**
-     * Refines an OCR box to the actual ink around it.
-     *
-     * OCR layout boxes can be a few dozen pixels off, and glyph ascenders such as
-     * accents can sit outside the reported box. This scans a vertical window around
-     * the box across the full image width, estimates the local paper colour, and
-     * locates the ink line that belongs to this block. The returned [InkSnap]
-     * carries two rectangles: the measured ink (where the translation is typeset)
-     * and the union with the OCR box (the area the patch must cover).
-     */
-    private fun snapToInk(
-        bitmap: Bitmap,
-        ocrRect: RectF,
-        virtualHeight: Float,
-        block: TranslationBlock,
-    ): InkSnap? {
-        val pxPerVirtualX = bitmap.width / PreparedOverlay.VIRTUAL_WIDTH
-        val pxPerVirtualY = bitmap.height / virtualHeight
-        val base = RectF(
-            ocrRect.left * pxPerVirtualX,
-            ocrRect.top * pxPerVirtualY,
-            ocrRect.right * pxPerVirtualX,
-            ocrRect.bottom * pxPerVirtualY,
-        )
-        if (base.width() < 2f || base.height() < 2f) return null
-
-        val averageLineHeight =
-            (base.height() / block.lineCount.coerceAtLeast(1)).coerceAtLeast(2f)
-        val margin = if (block.lineCount > 1) averageLineHeight * 1.5f else averageLineHeight * 0.9f
-        val top = (base.top - margin).toInt().coerceIn(0, bitmap.height - 1)
-        val bottom = (base.bottom + margin).toInt().coerceIn(top + 1, bitmap.height)
-        val windowHeight = bottom - top
-        if (windowHeight < 4) return null
-
-        val step = max(1, ceil(kotlin.math.sqrt((bitmap.width * windowHeight).toFloat() / 45_000f)).toInt())
-        val columns = ceil(bitmap.width.toFloat() / step).toInt().coerceAtLeast(1)
-        val rows = ceil(windowHeight.toFloat() / step).toInt().coerceAtLeast(1)
-        val pixels = IntArray(columns * rows)
-        var index = 0
-        for (row in 0 until rows) {
-            val y = (top + row * step).coerceAtMost(bottom - 1)
-            for (column in 0 until columns) {
-                val x = (column * step).coerceAtMost(bitmap.width - 1)
-                pixels[index++] = bitmap.getPixel(x, y)
-            }
-        }
-        val background = ColorAnalysis.dominantColor(pixels)
-
-        // ---- ink rows ----
-        val rowInk = IntArray(rows)
-        index = 0
-        for (row in 0 until rows) {
-            for (column in 0 until columns) {
-                if (ColorAnalysis.colorDistance(pixels[index++], background) > INK_DISTANCE) {
-                    rowInk[row]++
-                }
-            }
-        }
-        val minInkPerRow = max(1, (columns * 0.005f).toInt())
-        val inkRows = (0 until rows).filter { rowInk[it] >= minInkPerRow }
-        if (inkRows.isEmpty()) return null
-        val inkRuns = runsOf(inkRows)
-
-        val baseTopRow = ((base.top - top) / step).toInt().coerceIn(0, rows - 1)
-        val baseBottomRow = ((base.bottom - top) / step).toInt().coerceIn(0, rows - 1)
-        val baseRowCenter = (baseTopRow + baseBottomRow) / 2f
-
-        fun rowOverlap(run: IntRange): Int =
-            max(0, min(run.last, baseBottomRow) - max(run.first, baseTopRow) + 1)
-
-        fun rowDistance(run: IntRange): Float =
-            kotlin.math.abs((run.first + run.last) / 2f - baseRowCenter)
-
-        val selectedRuns: List<IntRange> = if (block.lineCount <= 1) {
-            var best = inkRuns.first()
-            for (run in inkRuns.drop(1)) {
-                if (rowOverlap(run) > rowOverlap(best) ||
-                    (rowOverlap(run) == rowOverlap(best) && rowDistance(run) < rowDistance(best))
-                ) {
-                    best = run
-                }
-            }
-            listOf(best)
-        } else {
-            // Paragraphs are recognised as one block spanning several visual lines.
-            // Start from the runs the OCR box covers, then chain neighbouring runs
-            // while the line spacing stays paragraph-like.
-            val seeds = inkRuns.filter { rowOverlap(it) > 0 }
-                .ifEmpty { listOf(inkRuns.minByOrNull { rowDistance(it) } ?: inkRuns.first()) }
-                .sortedBy { it.first }
-            val maxRunGap = (averageLineHeight * 1.2f / step).toInt().coerceAtLeast(2)
-            val maxRuns = (block.lineCount + 1).coerceAtLeast(2)
-            val selected = seeds.toMutableList()
-            var changed = true
-            while (changed && selected.size < maxRuns) {
-                changed = false
-                val firstSelected = selected.first().first
-                val lastSelected = selected.last().last
-                val previousRun = inkRuns.lastOrNull { it.last < firstSelected }
-                if (previousRun != null && firstSelected - previousRun.last <= maxRunGap &&
-                    selected.size < maxRuns
-                ) {
-                    selected.add(0, previousRun)
-                    changed = true
-                }
-                val nextRun = inkRuns.firstOrNull { it.first > lastSelected }
-                if (nextRun != null && nextRun.first - lastSelected <= maxRunGap &&
-                    selected.size < maxRuns
-                ) {
-                    selected.add(nextRun)
-                    changed = true
-                }
-            }
-            selected.distinctBy { it.first }.sortedBy { it.first }
-        }
-
-        val bandTop = selectedRuns.first().first
-        val bandBottom = selectedRuns.last().last
-
-        // ---- ink columns inside the selected line band ----
-        val columnInk = IntArray(columns)
-        index = 0
-        for (row in 0 until rows) {
-            val inBand = row in bandTop..bandBottom
-            for (column in 0 until columns) {
-                if (inBand && ColorAnalysis.colorDistance(pixels[index], background) > INK_DISTANCE) {
-                    columnInk[column]++
-                }
-                index++
-            }
-        }
-        val inkedColumns = (0 until columns).filter { columnInk[it] > 0 }
-        if (inkedColumns.isEmpty()) return null
-
-        val refinedLeftColumn: Int
-        val refinedRightColumn: Int
-        if (block.lineCount <= 1) {
-            // Bridge word gaps but not the gap to a separate column.
-            val columnGap = max(2, (averageLineHeight * 1.1f / step).toInt())
-            val columnRuns = mutableListOf<IntRange>()
-            var runStart = inkedColumns.first()
-            var previousColumn = inkedColumns.first()
-            for (column in inkedColumns.drop(1)) {
-                if (column - previousColumn > columnGap) {
-                    columnRuns += runStart..previousColumn
-                    runStart = column
-                }
-                previousColumn = column
-            }
-            columnRuns += runStart..previousColumn
-
-            val baseLeftColumn = (base.left / step).toInt().coerceIn(0, columns - 1)
-            val baseRightColumn = (base.right / step).toInt().coerceIn(0, columns - 1)
-            val baseColumnCenter = (baseLeftColumn + baseRightColumn) / 2f
-            fun columnOverlap(run: IntRange): Int =
-                max(0, min(run.last, baseRightColumn) - max(run.first, baseLeftColumn) + 1)
-            fun columnDistance(run: IntRange): Float =
-                kotlin.math.abs((run.first + run.last) / 2f - baseColumnCenter)
-
-            var best = columnRuns.first()
-            for (run in columnRuns.drop(1)) {
-                if (columnOverlap(run) > columnOverlap(best) ||
-                    (columnOverlap(run) == columnOverlap(best) && columnDistance(run) < columnDistance(best))
-                ) {
-                    best = run
-                }
-            }
-            refinedLeftColumn = best.first
-            refinedRightColumn = best.last
-        } else {
-            refinedLeftColumn = inkedColumns.first()
-            refinedRightColumn = inkedColumns.last()
-        }
-
-        val refinedTop = (top + bandTop * step - step).toFloat().coerceAtLeast(0f)
-        val refinedBottom = (top + bandBottom * step + step * 2).toFloat()
-            .coerceAtMost(bitmap.height.toFloat())
-        val refinedLeft = (refinedLeftColumn * step - step).toFloat().coerceAtLeast(0f)
-        val refinedRight = (refinedRightColumn * step + step * 2).toFloat()
-            .coerceAtMost(bitmap.width.toFloat())
-        if (refinedRight - refinedLeft < 2f || refinedBottom - refinedTop < 2f) return null
-
-        // The ink is where the translation is typeset; the patch additionally covers
-        // the area the OCR box claimed, so nothing of the original sticks out.
-        val coverageTop = min(refinedTop, base.top)
-        val coverageBottom = max(refinedBottom, base.bottom)
-        val coverageLeft = min(refinedLeft, base.left)
-        val coverageRight = max(refinedRight, base.right)
-
-        fun toVirtual(rect: RectF) = RectF(
-            rect.left / pxPerVirtualX,
-            rect.top / pxPerVirtualY,
-            rect.right / pxPerVirtualX,
-            rect.bottom / pxPerVirtualY,
-        )
-        return InkSnap(
-            textRect = toVirtual(RectF(refinedLeft, refinedTop, refinedRight, refinedBottom)),
-            coverageRect = toVirtual(
-                RectF(coverageLeft, coverageTop, coverageRight, coverageBottom),
-            ),
-        )
-    }
-
-    private fun runsOf(indices: List<Int>): List<IntRange> {
-        val runs = mutableListOf<IntRange>()
-        var start = indices.first()
-        var previous = indices.first()
-        for (index in indices.drop(1)) {
-            if (index - previous > 1) {
-                runs += start..previous
-                start = index
-            }
-            previous = index
-        }
-        runs += start..previous
-        return runs
-    }
-
     /**
      * Samples the photo under the original text and derives the patch colour and a
      * matching ink colour. The sampling grid is small, so this stays cheap even for
@@ -545,9 +347,9 @@ object OverlayPreparer {
     ): ColorAnalysis.SampledColors {
         val bitmapScaleX = bitmap.width.toFloat() / item.width.coerceAtLeast(1)
         val bitmapScaleY = bitmap.height.toFloat() / item.height.coerceAtLeast(1)
-        // virtualRect is in 1000-wide virtual space; convert through image pixels.
         val virtualScaleX = item.width.toFloat() / PreparedOverlay.VIRTUAL_WIDTH
-        val virtualScaleY = item.height.toFloat() / (PreparedOverlay.VIRTUAL_WIDTH * item.height / item.width.coerceAtLeast(1))
+        val virtualScaleY = item.height.toFloat() /
+            (PreparedOverlay.VIRTUAL_WIDTH * item.height / item.width.coerceAtLeast(1))
         val left = (virtualRect.left * virtualScaleX * bitmapScaleX).toInt().coerceIn(0, bitmap.width - 1)
         val top = (virtualRect.top * virtualScaleY * bitmapScaleY).toInt().coerceIn(0, bitmap.height - 1)
         val right = (virtualRect.right * virtualScaleX * bitmapScaleX).toInt().coerceIn(left + 1, bitmap.width)
@@ -576,6 +378,11 @@ object PhotoOverlayRenderer {
 
     fun draw(canvas: Canvas, overlay: PreparedOverlay) {
         for (block in overlay.blocks) {
+            canvas.save()
+            canvas.translate(block.pivotX, block.pivotY)
+            if (block.rotationDegrees != 0f) {
+                canvas.rotate(block.rotationDegrees)
+            }
             canvas.drawRoundRect(
                 block.backgroundRect,
                 block.cornerRadius,
@@ -588,6 +395,7 @@ object PhotoOverlayRenderer {
                 text.layout.draw(canvas)
                 canvas.restore()
             }
+            canvas.restore()
         }
     }
 

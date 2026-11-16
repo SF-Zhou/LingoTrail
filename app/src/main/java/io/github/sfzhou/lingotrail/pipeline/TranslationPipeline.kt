@@ -88,7 +88,11 @@ class TranslationPipeline(
                 return
             }
 
-            val outcome = api.translateTexts(lines.map { it.translationInput }, targetLanguage)
+            val outcome = api.translateTexts(
+                texts = lines.map { it.translationInput },
+                target = targetLanguage,
+                sourceLanguage = snapshot.sourceLanguage,
+            )
             val units = GroupGeometry.buildUnits(
                 lines = lines,
                 lineTranslations = outcome.lines,

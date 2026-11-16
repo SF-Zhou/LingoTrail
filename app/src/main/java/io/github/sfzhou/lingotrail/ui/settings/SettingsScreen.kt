@@ -42,6 +42,7 @@ import io.github.sfzhou.lingotrail.ui.components.RowDivider
 import io.github.sfzhou.lingotrail.ui.components.SectionHeader
 import io.github.sfzhou.lingotrail.ui.components.SettingsGroup
 import io.github.sfzhou.lingotrail.ui.components.SettingsRow
+import io.github.sfzhou.lingotrail.ui.components.SourceLanguagePickerDialog
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -57,6 +58,7 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     var showLanguagePicker by remember { mutableStateOf(false) }
+    var showSourceLanguagePicker by remember { mutableStateOf(false) }
     var showApiKeyDialog by remember { mutableStateOf(false) }
     var showBaseUrlDialog by remember { mutableStateOf(false) }
     var showClearHistoryDialog by remember { mutableStateOf(false) }
@@ -102,6 +104,15 @@ fun SettingsScreen(
                         value = settings.targetLanguage.displayName(),
                         leadingIconRes = R.drawable.ic_translate,
                         onClick = { showLanguagePicker = true },
+                    )
+                    RowDivider()
+                    SettingsRow(
+                        title = stringResource(R.string.source_language),
+                        subtitle = stringResource(R.string.source_language_helper),
+                        value = settings.sourceLanguage?.displayName()
+                            ?: stringResource(R.string.source_language_auto),
+                        leadingIconRes = R.drawable.ic_language,
+                        onClick = { showSourceLanguagePicker = true },
                     )
                 }
             }
@@ -192,6 +203,17 @@ fun SettingsScreen(
                 showLanguagePicker = false
             },
             onDismiss = { showLanguagePicker = false },
+        )
+    }
+
+    if (showSourceLanguagePicker) {
+        SourceLanguagePickerDialog(
+            current = settings.sourceLanguage,
+            onSelect = { language ->
+                container.settings.setSourceLanguage(language)
+                showSourceLanguagePicker = false
+            },
+            onDismiss = { showSourceLanguagePicker = false },
         )
     }
 

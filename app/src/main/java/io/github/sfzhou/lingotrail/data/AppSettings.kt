@@ -8,6 +8,8 @@ import io.github.sfzhou.lingotrail.BuildConfig
 data class AppSettings(
     val apiKey: String = BuildConfig.DEFAULT_API_KEY,
     val targetLanguage: TargetLanguage = TargetLanguage.default,
+    /** Source language the user pinned; null means "detect it from the photo". */
+    val sourceLanguage: TargetLanguage? = null,
     val baseUrl: String = BuildConfig.DEEPSEEK_BASE_URL,
     val model: String = DEFAULT_MODEL,
     val onboardingComplete: Boolean = BuildConfig.DEFAULT_API_KEY.isNotBlank(),

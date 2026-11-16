@@ -28,6 +28,36 @@ enum class TargetLanguage(val tag: String, val promptName: String) {
     HINDI("hi", "Hindi"),
     TURKISH("tr", "Turkish"),
     DUTCH("nl", "Dutch"),
+    GREEK("el", "Greek"),
+    HEBREW("he", "Hebrew"),
+    POLISH("pl", "Polish"),
+    SWEDISH("sv", "Swedish"),
+    CZECH("cs", "Czech"),
+    DANISH("da", "Danish"),
+    NORWEGIAN("nb", "Norwegian"),
+    FINNISH("fi", "Finnish"),
+    HUNGARIAN("hu", "Hungarian"),
+    ROMANIAN("ro", "Romanian"),
+    UKRAINIAN("uk", "Ukrainian"),
+    BULGARIAN("bg", "Bulgarian"),
+    CROATIAN("hr", "Croatian"),
+    SERBIAN("sr", "Serbian"),
+    SLOVAK("sk", "Slovak"),
+    PERSIAN("fa", "Persian"),
+    URDU("ur", "Urdu"),
+    BENGALI("bn", "Bengali"),
+    TAMIL("ta", "Tamil"),
+    FILIPINO("fil", "Filipino"),
+    KHMER("km", "Khmer"),
+    LAO("lo", "Lao"),
+    BURMESE("my", "Burmese"),
+    NEPALI("ne", "Nepali"),
+    MONGOLIAN("mn", "Mongolian"),
+    GEORGIAN("ka", "Georgian"),
+    ARMENIAN("hy", "Armenian"),
+    AZERBAIJANI("az", "Azerbaijani"),
+    KAZAKH("kk", "Kazakh"),
+    UZBEK("uz", "Uzbek"),
     ;
 
     fun displayName(locale: Locale = Locale.getDefault()): String {
@@ -48,6 +78,9 @@ enum class TargetLanguage(val tag: String, val promptName: String) {
 
         /** Best guess for the device language, falling back to English. */
         fun forSystemLocale(locale: Locale = Locale.getDefault()): TargetLanguage {
+            if (locale.language == "iw") return HEBREW
+            if (locale.language == "in") return INDONESIAN
+            if (locale.language == "no") return NORWEGIAN
             if (locale.language == "zh") {
                 val traditional = locale.script == "Hant" ||
                     locale.country in setOf("TW", "HK", "MO")

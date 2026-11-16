@@ -36,7 +36,7 @@ class TranslationPipelineEndToEndTest {
         val container = (instrumentation.targetContext.applicationContext as LingoTrailApp).container
         val assets = instrumentation.context.assets
 
-        val assetNames = listOf("test_sign.png", "test_menu.png", "test_palace.png")
+        val assetNames = listOf("test_sign.png", "test_menu.png", "test_palace.png", "test_tilt.jpg")
         for (assetName in assetNames) {
             val item = assets.open(assetName).use { stream ->
                 container.history.importImage(stream, TargetLanguage.CHINESE_SIMPLIFIED)
@@ -64,6 +64,12 @@ class TranslationPipelineEndToEndTest {
             try {
                 val overlay = OverlayPreparer.prepare(bitmap, finished)
                 assertTrue("$assetName produced no drawable overlay blocks", overlay.blocks.isNotEmpty())
+                if (assetName.contains("tilt")) {
+                    assertTrue(
+                        "tilted photo should produce rotated overlay blocks",
+                        overlay.blocks.any { kotlin.math.abs(it.rotationDegrees) > 4f },
+                    )
+                }
             } finally {
                 bitmap.recycle()
             }

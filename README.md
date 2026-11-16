@@ -60,6 +60,10 @@ stored only on your device. There are no accounts, no analytics, and no server r
 | :---: |
 | ![Onboarding with the API key field and target language](docs/screenshots/onboarding.png) |
 
+| Angled photo (rotated translation) |
+| :---: |
+| ![A sign photographed at an angle with the translation laid along the same baseline](docs/screenshots/viewer-tilted.png) |
+
 ## Features
 
 - **Snap or import** — take a photo with the system camera or pick any image from the gallery.
@@ -67,10 +71,14 @@ stored only on your device. There are no accounts, no analytics, and no server r
 - **DeepSeek OCR with layout** — the photo is recognised by DeepSeek's OCR endpoint, which returns
   the text together with layout boxes, so lines and paragraphs keep their structure.
 - **Translation you can read in place** — the recognised lines are translated into your target
-  language and drawn back over the original text. The overlay samples the background colour of the
-  photo and auto-fits the type to the original box. Nineteen target languages are built in,
-  including English, Simplified and Traditional Chinese, Japanese, Korean, Spanish, French and
-  German.
+  language and drawn back over the original text. The app measures the direction and glyph height of
+  the original words, samples the paper colour, and lays the translation along the same baseline, so
+  it matches the original size even on photos taken at an angle. **49 languages** are built in,
+  including English, Simplified and Traditional Chinese, Japanese, Korean, Spanish, French, German,
+  Thai, Vietnamese, Greek, Hebrew, Polish and more.
+- **Source language control** — automatic detection is the default. Pin a source language in
+  Settings when a photo's script is ambiguous or the automatic guess is wrong; translations become
+  more reliable while lines written in another language are still handled.
 - **History that keeps every scan** — each scan stays in the app, ready to reopen, retranslate,
   delete, or clear all at once.
 - **A viewer built for photos** — pinch to zoom, drag to pan, double-tap to zoom, and a single
@@ -131,13 +139,15 @@ You can change the key, change the target language, or point the app at a proxy/
    `purpose=rich_layout_recognition`. The response contains the recognised text and its layout
    boxes.
 3. **Group & translate** — the text blocks are parsed, put in reading order and translated into
-   your target language in batches with the `deepseek-flash` chat model. The model may report that
-   consecutive lines are wrapped fragments of one sentence; those paragraph groups are drawn as a
-   single block, and a geometric sanity check falls back to per-line translations when a proposed
-   group does not describe visually adjacent lines. Translations always stay aligned with the
-   recognised text.
-4. **Lay it back in** — for each block the app samples the background colour around the original
-   text and fits the translation into the same area, then draws the result over the photo on-device.
+   your target language in batches with the `deepseek-flash` chat model. A pinned source language (or
+   automatic detection by default) is passed to the model. The model may report that consecutive
+   lines are wrapped fragments of one sentence; those paragraph groups are drawn as a single block,
+   and a geometric sanity check falls back to per-line translations when a proposed group does not
+   describe visually adjacent lines. Translations always stay aligned with the recognised text.
+4. **Lay it back in** — for each block the app estimates the text angle and glyph height from the
+   ink of the original words (projection analysis over the local pixels), samples the background
+   colour, and draws the translation along the same baseline at a matching size, rotating the patch
+   when the photo was taken at an angle.
 5. **Keep & share** — the scan and its translation are kept in history; the viewer can toggle the
    overlay and share a composited image.
 
@@ -153,8 +163,8 @@ Everything after the API responses is done locally on the device.
 - **The overlay never sacrifices legibility.** If a translation cannot be fitted into the original
   text area at a usable size, that block keeps the original pixels instead of drawing an unreadable
   smear.
-- **Nineteen target languages** are built in, and the interface is available in English and
-  Simplified Chinese.
+- **49 languages** are built in for both source and target, and the interface is available in
+  English and Simplified Chinese.
 - **DeepSeek's API is third-party.** Endpoint behaviour, availability, rate limits and pricing are
   controlled by DeepSeek, not by this project.
 

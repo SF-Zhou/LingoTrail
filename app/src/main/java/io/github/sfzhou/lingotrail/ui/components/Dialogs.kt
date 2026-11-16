@@ -108,6 +108,73 @@ fun LanguagePickerDialog(
     )
 }
 
+/** Radio list for the source language, including the automatic default. */
+@Composable
+fun SourceLanguagePickerDialog(
+    current: TargetLanguage?,
+    onSelect: (TargetLanguage?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.source_language), style = MaterialTheme.typography.titleLarge) },
+        text = {
+            LazyColumn(
+                modifier = Modifier
+                    .heightIn(max = 440.dp)
+                    .selectableGroup(),
+            ) {
+                item(key = "auto") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = current == null,
+                                onClick = { onSelect(null) },
+                                role = Role.RadioButton,
+                            )
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = current == null, onClick = null)
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            text = stringResource(R.string.source_language_auto),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+                items(TargetLanguage.entries, key = { it.tag }) { language ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = language == current,
+                                onClick = { onSelect(language) },
+                                role = Role.RadioButton,
+                            )
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = language == current, onClick = null)
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            text = language.displayName(),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
+}
+
 /**
  * Edits and saves an API key. Validation of the key against the platform happens
  * in the caller (onboarding verifies, settings saves immediately).

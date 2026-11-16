@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-16
+
+### Added
+
+- **Source language setting** — automatic detection is still the default, but the source language can
+  now be pinned in Settings. A pinned language makes translation more reliable for similar scripts and
+  travel-specific phrasing; lines that are clearly in another language are still translated.
+- **30 more languages** (49 in total), covering common travel sources and targets such as Greek,
+  Hebrew, Polish, Swedish, Czech, Danish, Norwegian, Finnish, Hungarian, Romanian, Ukrainian,
+  Bulgarian, Croatian, Serbian, Persian, Urdu, Bengali, Tamil, Filipino, Khmer, Lao, Burmese, Nepali
+  and more.
+- **Rotated-text overlay** — the app now measures the direction of the original text and draws the
+  translation along the same baseline. Photos taken at an angle get a tight, rotated patch instead of
+  a huge axis-aligned rectangle.
+- End-to-end and on-device regression tests for the overlay geometry (rotated and upright cases).
+
+### Fixed
+
+- **Translation no longer occupies far more space than the original text.** Type size is derived from
+  the measured height of the original glyphs instead of the OCR bounding box, which could be several
+  times taller than the text on angled photos.
+- Background patches fully cover the original words on tilted signage, and paragraphs keep their full
+  height even when the OCR box only spans the first lines.
+- Ink colour sampling and patch colour are taken from the dominant local paper colour, so patches
+  blend into the photo instead of showing as grey blocks.
+
+### Changed
+
+- Translation prompt refined: keep each line about as long as the original (it is drawn in place),
+  trust a pinned source language, still translate mixed-script lines, and preserve table markup.
+
+
 ## [1.0.0] - 2026-11-16
 
 Initial public release.
