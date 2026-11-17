@@ -1,0 +1,96 @@
+name: Bug report
+description: Report a reproducible problem with LingoTrail
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+
+        **Never paste your DeepSeek API key or any other secret into this issue.** Remove it from
+        screenshots, logs, and text before submitting.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I reproduced this on the latest release (or on `main` when building from source).
+          required: true
+        - label: This report contains no API key, keystore, or other secret.
+          required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: LingoTrail version
+      description: Shown under Settings → About, or use the release tag (for example 1.0.0).
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      description: Device model and Android version.
+      placeholder: "Pixel 8, Android 15"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area of the app
+      options:
+        - Capture or import
+        - OCR / text recognition
+        - Translation
+        - Translation overlay rendering
+        - History or viewer
+        - Settings or API key
+        - Sharing
+        - Build, CI, or release
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: A minimal, reliable sequence that triggers the bug.
+      placeholder: |
+        1. Open LingoTrail ...
+        2. Take a photo of ...
+        3. Tap ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      placeholder: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      placeholder: What happened instead? Include any error message shown in the app.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots (optional)
+      description: |
+        `adb logcat` output or screenshots can help. Mask API keys and any personal data.
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context (optional)
+      placeholder: Anything else that might be relevant — network, target language, image source.
+    validations:
+      required: false
